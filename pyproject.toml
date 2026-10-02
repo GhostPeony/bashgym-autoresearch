@@ -1,0 +1,44 @@
+[project]
+name = "bashgym-autoresearch"
+version = "0.1.0"
+description = "Agent-driven model improvement: fixed sealed evaluation, one controlled change per experiment, statistically gated keep/discard."
+readme = "README.md"
+authors = [
+    { name = "Cade", email = "53796776+Cadecr@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "fastapi>=0.142.2",
+    "pydantic>=2.13.5",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+bashgym-ar = "bashgym_autoresearch.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
