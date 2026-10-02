@@ -33,9 +33,9 @@ EVALUATE_SCRIPT = textwrap.dedent("""
     context = json.loads((inputs / "context.json").read_text())
     recipe = json.loads((inputs / "recipe.json").read_text())
     boost = recipe.get("boost", 0.0)
-    model = inputs / "model" / "weights.json"
-    if model.exists():
-        boost = json.loads(model.read_text())["boost"]
+    model = json.loads((inputs / "model.json").read_text())["path"]
+    if model:
+        boost = json.loads((pathlib.Path(model) / "weights.json").read_text())["boost"]
     if recipe.get("eval_crash"):
         sys.exit(3)
     import hashlib

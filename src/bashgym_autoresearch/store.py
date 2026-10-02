@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS stage_runs (
     exit_code INTEGER,
     reason TEXT,
     output_digest TEXT,
+    script_sha256 TEXT NOT NULL,
+    context_json TEXT,
     version INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
