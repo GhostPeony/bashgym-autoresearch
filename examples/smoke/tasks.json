@@ -1,0 +1,162 @@
+[
+ {
+  "task_id": "t00",
+  "difficulty": 0.0
+ },
+ {
+  "task_id": "t01",
+  "difficulty": 0.1
+ },
+ {
+  "task_id": "t02",
+  "difficulty": 0.2
+ },
+ {
+  "task_id": "t03",
+  "difficulty": 0.3
+ },
+ {
+  "task_id": "t04",
+  "difficulty": 0.4
+ },
+ {
+  "task_id": "t05",
+  "difficulty": 0.5
+ },
+ {
+  "task_id": "t06",
+  "difficulty": 0.6
+ },
+ {
+  "task_id": "t07",
+  "difficulty": 0.7
+ },
+ {
+  "task_id": "t08",
+  "difficulty": 0.8
+ },
+ {
+  "task_id": "t09",
+  "difficulty": 0.9
+ },
+ {
+  "task_id": "t10",
+  "difficulty": 0.0
+ },
+ {
+  "task_id": "t11",
+  "difficulty": 0.1
+ },
+ {
+  "task_id": "t12",
+  "difficulty": 0.2
+ },
+ {
+  "task_id": "t13",
+  "difficulty": 0.3
+ },
+ {
+  "task_id": "t14",
+  "difficulty": 0.4
+ },
+ {
+  "task_id": "t15",
+  "difficulty": 0.5
+ },
+ {
+  "task_id": "t16",
+  "difficulty": 0.6
+ },
+ {
+  "task_id": "t17",
+  "difficulty": 0.7
+ },
+ {
+  "task_id": "t18",
+  "difficulty": 0.8
+ },
+ {
+  "task_id": "t19",
+  "difficulty": 0.9
+ },
+ {
+  "task_id": "t20",
+  "difficulty": 0.0
+ },
+ {
+  "task_id": "t21",
+  "difficulty": 0.1
+ },
+ {
+  "task_id": "t22",
+  "difficulty": 0.2
+ },
+ {
+  "task_id": "t23",
+  "difficulty": 0.3
+ },
+ {
+  "task_id": "t24",
+  "difficulty": 0.4
+ },
+ {
+  "task_id": "t25",
+  "difficulty": 0.5
+ },
+ {
+  "task_id": "t26",
+  "difficulty": 0.6
+ },
+ {
+  "task_id": "t27",
+  "difficulty": 0.7
+ },
+ {
+  "task_id": "t28",
+  "difficulty": 0.8
+ },
+ {
+  "task_id": "t29",
+  "difficulty": 0.9
+ },
+ {
+  "task_id": "t30",
+  "difficulty": 0.0
+ },
+ {
+  "task_id": "t31",
+  "difficulty": 0.1
+ },
+ {
+  "task_id": "t32",
+  "difficulty": 0.2
+ },
+ {
+  "task_id": "t33",
+  "difficulty": 0.3
+ },
+ {
+  "task_id": "t34",
+  "difficulty": 0.4
+ },
+ {
+  "task_id": "t35",
+  "difficulty": 0.5
+ },
+ {
+  "task_id": "t36",
+  "difficulty": 0.6
+ },
+ {
+  "task_id": "t37",
+  "difficulty": 0.7
+ },
+ {
+  "task_id": "t38",
+  "difficulty": 0.8
+ },
+ {
+  "task_id": "t39",
+  "difficulty": 0.9
+ }
+]

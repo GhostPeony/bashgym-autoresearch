@@ -1,9 +1,8 @@
 # bashgym-autoresearch
 
-**Status: early, built in public.** This repository currently contains the
-project skeleton and the design. Nothing below the "Design" heading is
-implemented yet; each milestone lands with tests and is described here only
-once it works.
+**Status: early, built in public.** Milestone 1, the GPU-free core loop, works
+end to end; see [What works today](#what-works-today). Training, the real
+evaluation suites, trace capture, and the dashboards are still being built.
 
 bashgym-autoresearch lets an AI agent improve a model through repeated,
 controlled experiments while a human checks in and approves the results:
@@ -46,6 +45,30 @@ instructions. It is the streamlined successor to the experiment loop in
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the planned components and
 milestones.
+
+## What works today
+
+Milestone 1 provides the loop itself, proven with smoke stages that need no GPU
+([examples/smoke](examples/smoke)):
+
+- `bashgym-ar serve` runs the HTTP API and a worker that launches registered
+  stage programs as local processes, survives restarts by adopting runs that
+  are still going, enforces per-stage time limits, and seals each stage's
+  outputs with an HMAC.
+- The ten agent operations are available through MCP (`bashgym-ar mcp`), the
+  CLI, and HTTP. [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) describes the loop
+  for any harness.
+- Agent tokens can request but not grant start, budget, promotion, and
+  publication approvals; they cannot edit guidance or register stage programs.
+- Evaluation stages receive a platform-issued context and must echo its digest;
+  a registered script whose SHA-256 changes is refused at launch.
+- Candidates are kept only when the cluster-bootstrap interval's lower bound
+  clears the minimum improvement and protected metrics hold; otherwise the
+  result is discarded or inconclusive.
+- Smoke-scope results are labelled throughout and cannot be promoted.
+
+Not yet available: real training and evaluation runners, remote (SSH)
+execution, trace capture, notifications, and the web dashboards.
 
 ## Development
 

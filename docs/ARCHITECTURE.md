@@ -1,8 +1,7 @@
 # Architecture (planned)
 
-This document describes the intended design. Components are marked as they are
-implemented; until then, treat everything here as a plan, not a description of
-working software.
+This document describes the design. Components marked **(implemented)** exist
+and are tested; everything else is still a plan.
 
 ## The loop
 
@@ -58,22 +57,22 @@ The same operations are exposed through MCP, the CLI, and HTTP:
 
 | Component | Responsibility |
 | --- | --- |
-| `contracts` | Frozen data models and canonical hashing |
-| `store` | SQLite persistence with optimistic versioning, idempotency, and an event log |
-| `decision` | Keep/discard/inconclusive rule, next-action selection, single-change check |
-| `stats` | Clustered paired bootstrap |
-| `seal`, `evidence` | Result sealing and evaluation verification |
-| `loop`, `worker` | Mechanical progression: ingest results, bounded retries, stop rules |
-| `executors` | Local and SSH execution with restart-safe run identity and deadlines |
+| `contracts` **(implemented)** | Frozen data models and canonical hashing |
+| `store` **(implemented)** | SQLite persistence with optimistic versioning, idempotency, and an event log |
+| `decision` **(implemented)** | Keep/discard/inconclusive rule, next-action selection, single-change check |
+| `stats` **(implemented)** | Clustered paired bootstrap |
+| `seal`, `evidence` **(implemented)** | Result sealing and evaluation verification |
+| `worker` **(implemented)** | Mechanical progression: launch, observe, seal, decide, stop rules |
+| `executors` | Local **(implemented)** and SSH execution with restart-safe run identity and deadlines |
 | `runners` | Generic verifiable-task evaluation harness; TRL and NeMo AutoModel training |
-| `approvals`, `guidance`, `notify` | Human gates, steering, and check-in digests |
+| `auth`, `service` **(implemented)**; `notify` | Human gates and guidance (implemented); check-in digests (planned) |
 | `traces` | Agent-session import, redaction, quality classification, training export |
-| `api`, `mcp_server`, `cli` | The agent and human surfaces |
+| `api`, `mcp_server`, `cli` **(implemented)** | The agent and human surfaces |
 | `web/` | Browser dashboards generated from campaign state |
 
 ## Milestones
 
-1. **Core loop:** contracts, store, decision, statistics, sealing, approvals,
+1. **Core loop (done):** contracts, store, decision, statistics, sealing, approvals,
    and the agent operations, proven end to end with a labeled smoke stage.
 2. **Evaluation harness:** one task-suite interface, with a coding suite and a
    data-analysis suite (SmolDataEnvs).
