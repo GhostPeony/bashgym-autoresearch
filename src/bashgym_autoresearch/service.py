@@ -632,3 +632,126 @@ def _tail(path: Path) -> str:
 
 
 __all__ = ["CampaignState", "NotFound", "RuleError", "Service", "TERMINAL_STATUSES"]
+
+
+MAX_METRIC_LINES = 2000
+
+
+class DashboardService:
+    """Read-only projections for the web dashboard."""
+
+    def __init__(self, service: Service):
+        self.service = service
+        self.store = service.store
+
+    def _experiment(self, experiment_id: str) -> sqlite3.Row:
+        row = self.store.read_one("SELECT * FROM experiments WHERE id = ?", (experiment_id,))
+        if row is None:
+            raise NotFound(f"experiment {experiment_id} not found")
+        return row
+
+    def campaign(self, principal: Principal, campaign_id: str) -> dict:
+        brief = self.service.brief(principal, campaign_id)
+        state = self.service.state(campaign_id)
+        stages: dict[str, list[dict]] = {}
+        for row in self.store.read(
+            "SELECT s.experiment_id, s.kind, s.profile, s.status, s.exit_code, s.reason, s.cost,"
+            " s.created_at, s.updated_at FROM stage_runs s JOIN experiments e"
+            " ON e.id = s.experiment_id WHERE e.campaign_id = ? ORDER BY s.created_at",
+            (campaign_id,),
+        ):
+            stages.setdefault(row["experiment_id"], []).append(
+                {key: row[key] for key in row.keys() if key != "experiment_id"}
+            )
+        approvals = self.store.read(
+            "SELECT id, kind, status, payload_json, requested_by, decided_by, created_at"
+            " FROM approvals WHERE campaign_id = ? ORDER BY created_at",
+            (campaign_id,),
+        )
+        experiments = []
+        for row in state.experiments:
+            summary = _result_summary(row)
+            summary.update(
+                created_at=row["created_at"],
+                estimated_cost=row["estimated_cost"],
+                stages=stages.get(row["id"], []),
+            )
+            experiments.append(summary)
+        return {
+            **brief,
+            "spec": json.loads(state.campaign["spec_json"]),
+            "experiments": experiments,
+            "approvals": [
+                {**dict(row), "payload": json.loads(row["payload_json"])} for row in approvals
+            ],
+            "events": self.store.events_after(campaign_id, max(0, brief["event_seq"] - 50)),
+        }
+
+    def training_metrics(self, principal: Principal, experiment_id: str, after: int = 0) -> dict:
+        """Per-step training metrics written by the training stage, from line ``after`` on."""
+        self._experiment(experiment_id)
+        stage = self.store.read_one(
+            "SELECT run_dir FROM stage_runs WHERE experiment_id = ? AND kind = 'train'",
+            (experiment_id,),
+        )
+        points: list[dict] = []
+        line_count = 0
+        if stage is not None:
+            path = Path(stage["run_dir"]) / "outputs" / "training_metrics.jsonl"
+            try:
+                with path.open(encoding="utf-8") as handle:
+                    for line_count, line in enumerate(handle, start=1):
+                        if line_count <= after or len(points) >= MAX_METRIC_LINES:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except ValueError:
+                            continue
+                        if isinstance(record, dict):
+                            points.append(
+                                {
+                                    k: v
+                                    for k, v in record.items()
+                                    if isinstance(v, (int, float)) and math.isfinite(v)
+                                }
+                            )
+            except OSError:
+                pass
+        return {"experiment_id": experiment_id, "points": points, "next": after + len(points)}
+
+    def task_results(self, principal: Principal, experiment_id: str) -> dict:
+        """Per-task evaluation outcomes. Human-only: they reveal which tasks fail."""
+        require_human(principal)
+        self._experiment(experiment_id)
+        stage = self.store.read_one(
+            "SELECT run_dir FROM stage_runs WHERE experiment_id = ? AND kind = 'evaluate'",
+            (experiment_id,),
+        )
+        tasks: list = []
+        if stage is not None:
+            path = Path(stage["run_dir"]) / "outputs" / "task_results.json"
+            try:
+                if path.stat().st_size <= 16 * 1024 * 1024:
+                    tasks = json.loads(path.read_text(encoding="utf-8")).get("tasks", [])
+            except (OSError, ValueError, AttributeError):
+                tasks = []
+        return {"experiment_id": experiment_id, "tasks": tasks}
+
+    def pending_approvals(self, principal: Principal) -> list[dict]:
+        rows = self.store.read(
+            "SELECT a.id, a.campaign_id, a.kind, a.payload_json, a.requested_by, a.created_at,"
+            " c.spec_json FROM approvals a JOIN campaigns c ON c.id = a.campaign_id"
+            " WHERE a.status = 'pending' ORDER BY a.created_at"
+        )
+        return [
+            {
+                "approval_id": row["id"],
+                "campaign_id": row["campaign_id"],
+                "campaign_name": json.loads(row["spec_json"])["name"],
+                "kind": row["kind"],
+                "payload": json.loads(row["payload_json"]),
+                "requested_by": row["requested_by"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]

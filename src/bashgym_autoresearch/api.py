@@ -4,12 +4,15 @@ Annotations are evaluated eagerly (no ``from __future__ import annotations``) so
 FastAPI can resolve the dependency aliases defined inside ``create_app``.
 """
 
+import asyncio
+import json
 import secrets
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from bashgym_autoresearch.auth import AuthError, Forbidden, Principal, authenticate
@@ -22,7 +25,7 @@ from bashgym_autoresearch.contracts import (
 )
 from bashgym_autoresearch.decision import EvaluationMismatch, ProposalError
 from bashgym_autoresearch.seal import Sealer
-from bashgym_autoresearch.service import NotFound, RuleError, Service
+from bashgym_autoresearch.service import DashboardService, NotFound, RuleError, Service
 from bashgym_autoresearch.store import ConflictError, Store
 
 SEAL_KEY_FILENAME = "seal.key"
@@ -84,8 +87,9 @@ _STATUS = [
 ]
 
 
-def create_app(service: Service) -> FastAPI:
+def create_app(service: Service, *, static_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="bashgym-autoresearch", version="0.1.0")
+    dashboard = DashboardService(service)
 
     for error, status in _STATUS:
 
@@ -188,5 +192,50 @@ def create_app(service: Service) -> FastAPI:
     @app.get("/v1/campaigns/{campaign_id}/report")
     def report(campaign_id: str, who: Who) -> dict:
         return service.report(who, campaign_id)
+
+    @app.get("/v1/campaigns/{campaign_id}/dashboard")
+    def campaign_dashboard(campaign_id: str, who: Who) -> dict:
+        return dashboard.campaign(who, campaign_id)
+
+    @app.get("/v1/experiments/{experiment_id}/training-metrics")
+    def training_metrics(experiment_id: str, who: Who, after: int = 0) -> dict:
+        return dashboard.training_metrics(who, experiment_id, max(0, after))
+
+    @app.get("/v1/experiments/{experiment_id}/task-results")
+    def task_results(experiment_id: str, who: Who) -> dict:
+        return dashboard.task_results(who, experiment_id)
+
+    @app.get("/v1/approvals")
+    def pending_approvals(who: Who) -> list[dict]:
+        return dashboard.pending_approvals(who)
+
+    @app.get("/v1/campaigns/{campaign_id}/stream")
+    async def stream(
+        campaign_id: str, request: Request, who: Who, after: int = 0, seconds: float = 300.0
+    ):
+        """Server-sent events after event ``after``; the stream ends after ``seconds``.
+
+        Clients reconnect with the last event id they received.
+        """
+        await asyncio.to_thread(service.state, campaign_id)
+        loop = asyncio.get_running_loop()
+        ends_at = loop.time() + max(0.0, min(seconds, 3600.0))
+
+        async def events():
+            cursor, idle = after, 0
+            while loop.time() < ends_at and not await request.is_disconnected():
+                batch = await asyncio.to_thread(service.store.events_after, campaign_id, cursor)
+                for event in batch:
+                    cursor = event["seq"]
+                    yield f"id: {cursor}\ndata: {json.dumps(event)}\n\n"
+                idle = 0 if batch else idle + 1
+                if idle and idle % 30 == 0:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(0.5)
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    if static_dir is not None and (static_dir / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="web")
 
     return app

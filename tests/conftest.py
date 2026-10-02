@@ -62,6 +62,9 @@ TRAIN_SCRIPT = textwrap.dedent("""
     time.sleep(recipe.get("train_seconds", 0))
     model = run_dir / "outputs" / "model"
     model.mkdir(parents=True, exist_ok=True)
+    with (run_dir / "outputs" / "training_metrics.jsonl").open("w") as metrics:
+        for step in range(1, 4):
+            metrics.write(json.dumps({"step": step, "loss": 1.0 / step}) + "\\n")
     (model / "weights.json").write_text(json.dumps({"boost": recipe.get("boost", 0.0)}))
     """)
 
