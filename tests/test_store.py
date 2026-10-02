@@ -92,3 +92,12 @@ def test_concurrent_writers_serialize_without_lost_updates(tmp_path):
     for thread in threads:
         thread.join()
     assert Store(path).read_one("SELECT version FROM campaigns WHERE id='c1'")["version"] == 81
+
+
+def test_reusing_a_key_for_a_different_request_is_rejected(store):
+    from bashgym_autoresearch.store import IdempotencyMismatch
+
+    store.remember("k", lambda db: {"n": 1}, fingerprint="a")
+    assert store.remember("k", lambda db: {"n": 2}, fingerprint="a") == {"n": 1}
+    with pytest.raises(IdempotencyMismatch):
+        store.remember("k", lambda db: {"n": 3}, fingerprint="b")

@@ -26,6 +26,9 @@ class Executor(Protocol):
     ) -> None:
         """Start the stage. ``run_dir`` must not exist yet; it is created exclusively."""
 
+    def launched(self, run_id: str) -> bool:
+        """Whether a launch for ``run_id`` was recorded (used to adopt instead of relaunch)."""
+
     def observe(self, run_id: str, run_dir: Path) -> Observation:
         """Report the run's state using only what is recorded in ``run_dir``."""
 

@@ -59,13 +59,23 @@ Milestone 1 provides the loop itself, proven with smoke stages that need no GPU
   CLI, and HTTP. [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md) describes the loop
   for any harness.
 - Agent tokens can request but not grant start, budget, promotion, and
-  publication approvals; they cannot edit guidance or register stage programs.
-- Evaluation stages receive a platform-issued context and must echo its digest;
-  a registered script whose SHA-256 changes is refused at launch.
+  publication approvals; they cannot mint tokens, edit guidance, or register
+  stage programs.
+- A candidate's recipe may differ from the incumbent's only at its declared
+  variable. Evaluation stages never see the recipe, receive a context with a
+  per-launch nonce, and must echo its digest. Stage programs are pinned by
+  SHA-256 and snapshotted per campaign; trained models are re-verified against
+  their seal before evaluation and before the decision.
 - Candidates are kept only when the cluster-bootstrap interval's lower bound
-  clears the minimum improvement and protected metrics hold; otherwise the
-  result is discarded or inconclusive.
+  clears the minimum improvement over enough independent clusters and protected
+  metrics hold against the incumbent and the baseline; otherwise the result is
+  discarded or inconclusive.
+- The budget is charged by measured stage time at human-set rates.
 - Smoke-scope results are labelled throughout and cannot be promoted.
+
+[docs/SECURITY.md](docs/SECURITY.md) lists what the service enforces and what
+deployment must provide (notably, run the service as a different OS user than
+the agent).
 
 Not yet available: real training and evaluation runners, remote (SSH)
 execution, trace capture, notifications, and the web dashboards.

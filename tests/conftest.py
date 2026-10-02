@@ -26,18 +26,15 @@ HUMAN = Principal(role="human", label="owner")
 AGENT = Principal(role="agent", label="agent")
 
 # Evaluates 40 tasks. Task i passes when its score ``(i % 10) / 10`` is below
-# ``0.5 + boost``, where ``boost`` comes from the recipe or the trained model.
+# ``0.5 + boost``, where ``boost`` comes from the trained model (0 for the base model).
 EVALUATE_SCRIPT = textwrap.dedent("""
     import json, pathlib, sys
     run_dir, inputs = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
     context = json.loads((inputs / "context.json").read_text())
-    recipe = json.loads((inputs / "recipe.json").read_text())
-    boost = recipe.get("boost", 0.0)
     model = json.loads((inputs / "model.json").read_text())["path"]
+    boost = 0.0
     if model:
         boost = json.loads((pathlib.Path(model) / "weights.json").read_text())["boost"]
-    if recipe.get("eval_crash"):
-        sys.exit(3)
     import hashlib
     digest = hashlib.sha256(
         json.dumps(context, sort_keys=True, separators=(",", ":")).encode()

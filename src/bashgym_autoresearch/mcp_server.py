@@ -101,10 +101,16 @@ def build_server(client: Client) -> MCPServer:
 
     @server.tool()
     def request_approval(
-        campaign_id: str, kind: str, payload: dict[str, Any] | None = None
+        campaign_id: str,
+        kind: str,
+        payload: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """Ask a human to approve start, budget (payload.amount), promote or publish."""
-        return client.request_approval(campaign_id, kind, payload)
+        """Ask a human to approve start, budget (payload.amount), promote or publish.
+
+        Reuse the same ``idempotency_key`` when retrying so only one request is created.
+        """
+        return client.request_approval(campaign_id, kind, payload, key=idempotency_key)
 
     @server.tool()
     def report(campaign_id: str) -> dict[str, Any]:

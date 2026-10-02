@@ -46,33 +46,48 @@ def _json_arg(value: str | None) -> object:
     return json.loads(value)
 
 
+def _restrict(path: Path, mode: int) -> None:
+    try:
+        path.chmod(mode)
+    except OSError:
+        pass
+
+
 def cmd_init(args: argparse.Namespace) -> int:
+    """Create the state directory and the first human token; later tokens need a human."""
     from bashgym_autoresearch.api import open_home
     from bashgym_autoresearch.auth import create_token
 
     home = _home(args)
-    token_path = home / HUMAN_TOKEN_FILENAME
+    home.mkdir(parents=True, exist_ok=True)
+    _restrict(home, 0o700)
     service = open_home(home)
-    if token_path.exists():
+    if service.store.read_one("SELECT 1 FROM tokens LIMIT 1") is not None:
         print(f"already initialized: {home}")
         return 0
+    token_path = home / HUMAN_TOKEN_FILENAME
     token = create_token(service.store, "human", "owner")
     token_path.write_text(token, encoding="utf-8")
-    try:
-        token_path.chmod(0o600)
-    except OSError:
-        pass
+    _restrict(token_path, 0o600)
     print(f"initialized {home}")
     print(f"human token written to {token_path}")
     return 0
 
 
 def cmd_token(args: argparse.Namespace) -> int:
-    from bashgym_autoresearch.api import open_home
-    from bashgym_autoresearch.auth import create_token
-
-    print(create_token(open_home(_home(args)).store, args.role, args.label))
+    """Mint a token through the API; this requires a human token."""
+    _print(_client(args).create_token(args.role, args.label))
     return 0
+
+
+def check_home_permissions(home: Path) -> str | None:
+    """On POSIX the state directory must not be readable by other users."""
+    if os.name == "nt":
+        return None
+    mode = home.stat().st_mode & 0o777
+    if mode & 0o077:
+        return f"{home} has mode {oct(mode)}; run `chmod 700 {home}` (state holds tokens and keys)"
+    return None
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -82,10 +97,16 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from bashgym_autoresearch.executors import LocalExecutor
     from bashgym_autoresearch.worker import Worker
 
-    service = open_home(_home(args))
+    home = _home(args)
+    service = open_home(home)
+    problem = check_home_permissions(home)
+    if problem:
+        raise SystemExit(problem)
     stop = threading.Event()
     worker = threading.Thread(
-        target=Worker(service, LocalExecutor()).run, args=(stop, args.interval), daemon=True
+        target=Worker(service, LocalExecutor(service.home / "control")).run,
+        args=(stop, args.interval),
+        daemon=True,
     )
     worker.start()
     try:
@@ -181,7 +202,9 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("init", help="create the state directory and a human token").set_defaults(
         run=cmd_init
     )
-    token = commands.add_parser("token", help="create an agent or human token")
+    token = commands.add_parser(
+        "token", help="create an agent or human token (needs a human token)"
+    )
     token.add_argument("role", choices=["agent", "human"])
     token.add_argument("--label", default="agent")
     token.set_defaults(run=cmd_token)

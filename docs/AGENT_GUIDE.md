@@ -9,10 +9,13 @@ the same ten operations and the platform enforces the same rules for all of them
 A human starts the service and gives you an agent token:
 
 ```bash
-bashgym-ar init                     # once; writes a human token to the state directory
-bashgym-ar token agent --label my-agent
+bashgym-ar init                     # once; writes the first human token to the state directory
 bashgym-ar serve                    # API on http://127.0.0.1:8765 plus the worker
+BGAR_TOKEN=<human token> bashgym-ar token agent --label my-agent
 ```
+
+See [SECURITY.md](SECURITY.md) for running the service so the agent cannot read
+its state directory.
 
 Then either:
 
@@ -26,9 +29,12 @@ Then either:
 1. `brief`: read `next_action`, the incumbent, recent results, budget, and the
    human's `guidance`. Guidance can change between iterations; read it every time.
 2. If `next_action.kind` is `propose_baseline`, propose the baseline without a
-   change. If it is `propose_candidate`, propose a candidate that changes
-   exactly one variable (`change.variable`, `before`, `after`) and states a
-   hypothesis. Put every parameter the stages need in `recipe`.
+   change, with the full starting `recipe`. If it is `propose_candidate`, copy
+   the incumbent's recipe, change exactly one value, and declare it as
+   `change` (`variable` is a dotted path such as `optimizer.lr`, with the old
+   and new values as `before` and `after`). The service rejects a recipe that
+   differs anywhere else. Training stages receive the recipe; evaluation stages
+   never do.
 3. `wait` until an `experiment_decided` event arrives. Pass the last seen
    event `seq` as `after_seq` to avoid replays.
 4. Read `results`. On `crash` or `incomplete`, read `failures` for exit codes
@@ -43,11 +49,11 @@ improvement.
 
 | Decision | Meaning |
 | --- | --- |
-| `keep` | The interval's lower bound is above zero and at least `minimum_improvement`; the candidate becomes the incumbent. |
+| `keep` | The interval's lower bound is above zero and at least `minimum_improvement`, enough independent task clusters were evaluated, and protected metrics held; the candidate becomes the incumbent. |
 | `discard` | The interval is below the minimum, or a protected metric regressed beyond its limit. |
-| `inconclusive` | The interval overlaps the minimum. Do not report it as a gain; add tasks or repeats, or try a larger change. |
+| `inconclusive` | The interval overlaps the minimum, or too few clusters were evaluated. Do not report it as a gain; add tasks or repeats, or try a larger change. |
 | `crash` | A stage exited with an error. |
-| `incomplete` | Infrastructure failed, a stage timed out, or a pinned script changed. It does not count as an experiment. |
+| `incomplete` | Infrastructure failed, a stage timed out, a pinned script or sealed model changed, or the result could not be compared. It does not count as an experiment, but too many stop the campaign. |
 
 ## Gates
 
@@ -57,7 +63,10 @@ Ask with `request_approval`; a human decides.
 | --- | --- |
 | `start` | The campaign is `awaiting_start`. |
 | `budget` | A proposal would exceed the budget. Payload: `{"amount": <number>}`. |
-| `promote`, `publish` | A kept, development-scope result is ready. Payload: `{"experiment_id": ...}`. Smoke-scope results are refused. |
+| `promote`, `publish` | A kept, development-scope result is ready. Payload: `{"experiment_id": ...}`. Smoke-scope results and baselines are refused. |
 
-You cannot grant approvals, edit guidance, register stage programs, or create
-campaigns. A campaign a human paused can only be resumed by a human.
+You cannot grant approvals, mint tokens, edit guidance, register stage programs,
+or create campaigns. A campaign a human paused can only be resumed by a human.
+The budget is charged by measured stage time, not only by your estimates.
+`failures` shows training stderr; evaluation stderr is withheld because it can
+reveal task contents.

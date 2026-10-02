@@ -143,3 +143,46 @@ def test_cancel_is_terminal_and_reported(world):
     report = world.service.report(HUMAN, campaign_id)
     assert report["status"] == "cancelled"
     assert json.dumps(report)
+
+
+@pytest.mark.parametrize(
+    "payload", [{"amount": float("nan")}, {"amount": True}, {"amount": -1}, {"x": "y" * 5000}]
+)
+def test_invalid_approval_payloads_are_rejected(world, payload):
+    campaign_id = world.started_campaign()
+    with pytest.raises(RuleError):
+        world.service.request_approval(AGENT, campaign_id, "budget", payload, "k")
+
+
+def test_reusing_an_idempotency_key_for_another_request_conflicts(world):
+    from bashgym_autoresearch.store import IdempotencyMismatch
+
+    campaign_id = world.started_campaign()
+    world.service.request_approval(AGENT, campaign_id, "budget", {"amount": 1}, "same")
+    with pytest.raises(IdempotencyMismatch):
+        world.service.request_approval(AGENT, campaign_id, "budget", {"amount": 2}, "same")
+
+
+def test_only_humans_mint_tokens(world):
+    with pytest.raises(Forbidden):
+        world.service.create_token(AGENT, "human", "escalate")
+    token = world.service.create_token(HUMAN, "agent", "codex")
+    assert token["token"].startswith("bgar_") and token["role"] == "agent"
+
+
+def test_budget_grant_revives_a_campaign_exhausted_by_budget(world):
+    from bashgym_autoresearch.contracts import StopRules
+
+    campaign_id = world.started_campaign(stop=StopRules(max_experiments=5, max_cost=1))
+    propose(world, campaign_id)
+    with world.service.store.transaction() as db:
+        db.execute("UPDATE experiments SET status = 'evaluated'")
+        db.execute(
+            "INSERT INTO results(experiment_id, decision, comparison_json, created_at)"
+            ' SELECT id, \'incomplete\', \'{"decision": "incomplete", "reason": "x"}\', \'now\''
+            " FROM experiments"
+        )
+        db.execute("UPDATE campaigns SET status = 'exhausted', version = version + 1")
+    approval = world.service.request_approval(AGENT, campaign_id, "budget", {"amount": 5}, "b")
+    world.service.decide_approval(HUMAN, approval["approval_id"], True)
+    assert world.service.brief(AGENT, campaign_id)["status"] == "running"

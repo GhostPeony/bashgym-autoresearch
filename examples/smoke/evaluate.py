@@ -17,9 +17,8 @@ tasks_bytes = (Path(__file__).parent / "tasks.json").read_bytes()
 if hashlib.sha256(tasks_bytes).hexdigest() != json.loads(context_bytes)["dataset_sha256"]:
     sys.exit("tasks.json does not match the campaign's dataset_sha256")
 tasks = json.loads(tasks_bytes)
-recipe = json.loads((inputs / "recipe.json").read_text())
 model = json.loads((inputs / "model.json").read_text())["path"]
-boost = recipe.get("boost", 0.0)
+boost = 0.0  # the base model; evaluation stages never see the agent's recipe
 if model:
     boost = json.loads((Path(model) / "weights.json").read_text())["boost"]
 

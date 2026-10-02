@@ -6,7 +6,7 @@ FastAPI can resolve the dependency aliases defined inside ``create_app``.
 
 import secrets
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -68,6 +68,11 @@ class GuidanceBody(_Body):
     text: str
 
 
+class TokenBody(_Body):
+    role: Literal["agent", "human"]
+    label: str
+
+
 _STATUS = [
     (AuthError, 401),
     (Forbidden, 403),
@@ -110,6 +115,10 @@ def create_app(service: Service) -> FastAPI:
     @app.get("/v1/health")
     def health() -> dict:
         return {"ok": True}
+
+    @app.post("/v1/tokens")
+    def create_token(body: TokenBody, who: Who) -> dict:
+        return service.create_token(who, body.role, body.label)
 
     @app.post("/v1/profiles")
     def register_profile(profile: StageProfile, who: Who) -> dict:

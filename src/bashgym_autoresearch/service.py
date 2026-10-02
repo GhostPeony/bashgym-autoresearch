@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import sqlite3
 import time
@@ -11,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from bashgym_autoresearch.auth import Principal, require_human
+from bashgym_autoresearch.auth import Principal, Role, create_token, require_human
 from bashgym_autoresearch.contracts import (
     TERMINAL_STATUSES,
     ApprovalKind,
@@ -20,12 +21,15 @@ from bashgym_autoresearch.contracts import (
     EvalEvidence,
     ExperimentRole,
     StageProfile,
+    canonical_hash,
+    canonical_json,
 )
-from bashgym_autoresearch.decision import next_action, validate_change
+from bashgym_autoresearch.decision import check_single_change, next_action, validate_change
 from bashgym_autoresearch.seal import Sealer, hash_file
 from bashgym_autoresearch.store import Store, utc_now
 
 MAX_RECIPE_BYTES = 64 * 1024
+MAX_PAYLOAD_BYTES = 4 * 1024
 MAX_HYPOTHESIS_CHARS = 4000
 STDERR_TAIL_BYTES = 4096
 ACTIVE_EXPERIMENT_STATUSES = ("queued", "running")
@@ -58,8 +62,21 @@ class CampaignState:
         self.active = next(
             (row for row in rows if row["status"] in ACTIVE_EXPERIMENT_STATUSES), None
         )
-        self.cost_used = sum(row["estimated_cost"] for row in rows)
+        measured = {
+            row["experiment_id"]: row["cost"]
+            for row in db.execute(
+                "SELECT s.experiment_id, SUM(s.cost) AS cost FROM stage_runs s"
+                " JOIN experiments e ON e.id = s.experiment_id WHERE e.campaign_id = ?"
+                " GROUP BY s.experiment_id",
+                (campaign["id"],),
+            ).fetchall()
+        }
+        # The platform charges whichever is larger: the agent's estimate or measured cost.
+        self.cost_used = sum(
+            max(row["estimated_cost"], measured.get(row["id"], 0.0)) for row in rows
+        )
         self.counted = sum(1 for row in rows if row["decision"] not in (None, "incomplete"))
+        self.incomplete = sum(1 for row in rows if row["decision"] == "incomplete")
         self.has_baseline = any(row["decision"] == "baseline" for row in rows)
         self.incumbent = next(
             (row for row in reversed(rows) if row["decision"] in ("baseline", "keep")), None
@@ -69,6 +86,14 @@ class CampaignState:
             if self.incumbent is not None
             else None
         )
+        baseline = next((row for row in rows if row["decision"] == "baseline"), None)
+        self.baseline_evidence = (
+            EvalEvidence.model_validate_json(baseline["evidence_json"]) if baseline else None
+        )
+        self.profiles = {
+            name: StageProfile.model_validate(profile)
+            for name, profile in json.loads(campaign["profiles_json"]).items()
+        }
 
     @property
     def best_value(self) -> float | None:
@@ -86,6 +111,7 @@ class CampaignState:
             cost_used=self.cost_used,
             best_value=self.best_value,
             now=now,
+            incomplete_count=self.incomplete,
         )
 
 
@@ -143,6 +169,12 @@ class Service:
 
     # ----- human setup ---------------------------------------------------------
 
+    def create_token(self, principal: Principal, role: Role, label: str) -> dict:
+        require_human(principal)
+        if not label or len(label) > 100:
+            raise RuleError("token label must be 1-100 characters")
+        return {"token": create_token(self.store, role, label), "role": role, "label": label}
+
     def register_profile(self, principal: Principal, profile: StageProfile) -> dict:
         require_human(principal)
         script = Path(profile.script)
@@ -166,21 +198,32 @@ class Service:
         evaluation = self.profile(spec.evaluation.profile)
         if evaluation.kind != "evaluate":
             raise RuleError("evaluation profile must have kind 'evaluate'")
-        if spec.train_profile is not None and self.profile(spec.train_profile).kind != "train":
-            raise RuleError("train profile must have kind 'train'")
+        profiles = {evaluation.name: evaluation.model_dump(mode="json")}
+        if spec.train_profile is not None:
+            train = self.profile(spec.train_profile)
+            if train.kind != "train":
+                raise RuleError("train profile must have kind 'train'")
+            profiles[train.name] = train.model_dump(mode="json")
 
         def compute(db: sqlite3.Connection) -> dict:
             campaign_id = _new_id("cmp")
             now = utc_now()
+            # Profiles are snapshotted so later re-registration cannot change how this
+            # campaign's baseline and candidates are trained or graded.
             db.execute(
-                "INSERT INTO campaigns(id, status, version, spec_json, guidance, guidance_version,"
-                " created_at, updated_at) VALUES (?, 'awaiting_start', 1, ?, '', 0, ?, ?)",
-                (campaign_id, spec.model_dump_json(), now, now),
+                "INSERT INTO campaigns(id, status, version, spec_json, profiles_json, guidance,"
+                " guidance_version, created_at, updated_at)"
+                " VALUES (?, 'awaiting_start', 1, ?, ?, '', 0, ?, ?)",
+                (campaign_id, spec.model_dump_json(), json.dumps(profiles), now, now),
             )
             self.store.append_event(db, campaign_id, "campaign_created", {"by": principal.label})
             return {"campaign_id": campaign_id, "status": "awaiting_start"}
 
-        return self.store.remember(f"create_campaign:{idempotency_key}", compute)
+        return self.store.remember(
+            f"create_campaign:{principal.label}:{idempotency_key}",
+            compute,
+            fingerprint=canonical_hash(spec),
+        )
 
     def list_campaigns(self, principal: Principal) -> list[dict]:
         rows = self.store.read(
@@ -223,6 +266,12 @@ class Service:
     ) -> dict:
         if kind not in ("start", "budget", "promote", "publish"):
             raise RuleError(f"unknown approval kind {kind!r}")
+        try:
+            encoded_payload = canonical_json(payload)
+        except ValueError as exc:
+            raise RuleError("approval payload must be finite JSON") from exc
+        if len(encoded_payload) > MAX_PAYLOAD_BYTES:
+            raise RuleError("approval payload is limited to 4 KiB of JSON")
 
         def compute(db: sqlite3.Connection) -> dict:
             campaign = self.campaign_row(db, campaign_id)
@@ -230,8 +279,13 @@ class Service:
                 raise RuleError("campaign is not awaiting a start approval")
             if kind == "budget":
                 amount = payload.get("amount")
-                if not isinstance(amount, (int, float)) or amount <= 0:
-                    raise RuleError("budget approvals need a positive 'amount'")
+                if (
+                    isinstance(amount, bool)
+                    or not isinstance(amount, (int, float))
+                    or not math.isfinite(amount)
+                    or amount <= 0
+                ):
+                    raise RuleError("budget approvals need a positive, finite 'amount'")
             if kind in ("promote", "publish"):
                 self._eligible_for_release(db, campaign_id, payload.get("experiment_id"))
             approval_id = _new_id("apr")
@@ -246,7 +300,11 @@ class Service:
             )
             return {"approval_id": approval_id, "kind": kind, "status": "pending"}
 
-        return self.store.remember(f"approval:{campaign_id}:{idempotency_key}", compute)
+        return self.store.remember(
+            f"approval:{campaign_id}:{principal.label}:{idempotency_key}",
+            compute,
+            fingerprint=canonical_hash({"kind": kind, "payload": payload}),
+        )
 
     def _eligible_for_release(
         self, db: sqlite3.Connection, campaign_id: str, experiment_id: Any
@@ -256,8 +314,8 @@ class Service:
             " ON r.experiment_id = e.id WHERE e.id = ? AND e.campaign_id = ?",
             (experiment_id, campaign_id),
         ).fetchone()
-        if row is None or row["decision"] not in ("baseline", "keep"):
-            raise RuleError("only a kept or baseline result can be promoted or published")
+        if row is None or row["decision"] != "keep":
+            raise RuleError("only a kept result can be promoted or published")
         if json.loads(row["evidence_json"])["scope"] != "development":
             raise RuleError("smoke-scope results cannot be promoted or published")
 
@@ -302,12 +360,16 @@ class Service:
             spec = CampaignSpec.model_validate_json(campaign["spec_json"])
             stop = spec.stop.model_copy(update={"max_cost": spec.stop.max_cost + payload["amount"]})
             updated = CampaignSpec.model_validate({**spec.model_dump(), "stop": stop.model_dump()})
+            # A campaign that stopped on its budget resumes once more budget is granted;
+            # any other stop rule that still holds stops it again on the next worker tick.
+            status = "running" if campaign["status"] == "exhausted" else campaign["status"]
             self.store.cas_update(
                 db,
                 "campaigns",
                 campaign["id"],
                 campaign["version"],
                 spec_json=updated.model_dump_json(),
+                status=status,
             )
         else:
             self._eligible_for_release(db, campaign["id"], payload.get("experiment_id"))
@@ -327,11 +389,15 @@ class Service:
         idempotency_key: str,
     ) -> dict:
         validate_change(role, change)
-        if len(json.dumps(recipe)) > MAX_RECIPE_BYTES:
+        try:
+            encoded_recipe = canonical_json(recipe)
+        except ValueError as exc:
+            raise RuleError("recipe must be finite JSON") from exc
+        if len(encoded_recipe) > MAX_RECIPE_BYTES:
             raise RuleError("recipe is limited to 64 KiB of JSON")
         if not hypothesis.strip() or len(hypothesis) > MAX_HYPOTHESIS_CHARS:
             raise RuleError("a hypothesis of at most 4000 characters is required")
-        if not (estimated_cost >= 0):
+        if not (math.isfinite(estimated_cost) and estimated_cost >= 0):
             raise RuleError("estimated_cost must be a non-negative number")
 
         def compute(db: sqlite3.Connection) -> dict:
@@ -340,6 +406,9 @@ class Service:
             expected = "propose_baseline" if role == "baseline" else "propose_candidate"
             if action.kind != expected:
                 raise RuleError(f"cannot propose a {role} now: {action.reason}")
+            if role == "candidate":
+                parent_recipe = json.loads(state.incumbent["recipe_json"])
+                check_single_change(parent_recipe, recipe, change)
             if state.cost_used + estimated_cost > state.spec.stop.max_cost:
                 raise RuleError(
                     "proposal would exceed the campaign budget; request a budget approval"
@@ -373,7 +442,19 @@ class Service:
             )
             return {"experiment_id": experiment_id, "status": "queued"}
 
-        return self.store.remember(f"propose:{campaign_id}:{idempotency_key}", compute)
+        return self.store.remember(
+            f"propose:{campaign_id}:{principal.label}:{idempotency_key}",
+            compute,
+            fingerprint=canonical_hash(
+                {
+                    "role": role,
+                    "change": change.model_dump(mode="json") if change else None,
+                    "recipe": recipe,
+                    "hypothesis": hypothesis,
+                    "estimated_cost": estimated_cost,
+                }
+            ),
+        )
 
     def brief(self, principal: Principal, campaign_id: str) -> dict:
         with self.store.transaction() as db:
@@ -463,7 +544,13 @@ class Service:
                     "status": stage["status"],
                     "exit_code": stage["exit_code"],
                     "reason": stage["reason"],
-                    "stderr_tail": _tail(Path(stage["run_dir"]) / "stderr.log"),
+                    # Evaluation stderr can reveal task contents or answers; only
+                    # training output is shown to the agent.
+                    "stderr_tail": (
+                        _tail(Path(stage["run_dir"]) / "stderr.log")
+                        if stage["kind"] == "train"
+                        else "(withheld for evaluation stages)"
+                    ),
                 }
                 for stage in stages
             ],

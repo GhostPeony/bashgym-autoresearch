@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -24,11 +25,35 @@ def test_init_creates_a_human_token_once(tmp_path, capsys):
     assert (home / "human.token").read_text() == token
 
 
-def test_token_command_creates_agent_tokens(tmp_path, capsys):
+def test_token_command_goes_through_the_api(monkeypatch, capsys):
+    calls = []
+
+    class FakeClient:
+        def create_token(self, role, label):
+            calls.append((role, label))
+            return {"token": "bgar_x", "role": role, "label": label}
+
+    monkeypatch.setattr(cli, "_client", lambda args: FakeClient())
+    assert cli.main(["token", "agent", "--label", "codex"]) == 0
+    assert calls == [("agent", "codex")]
+
+
+def test_init_never_mints_a_second_human_token(tmp_path, capsys):
     home = tmp_path / "home"
-    cli.main(["--home", str(home), "token", "agent", "--label", "codex"])
-    token = capsys.readouterr().out.strip()
-    assert authenticate(open_home(home).store, token).label == "codex"
+    cli.main(["--home", str(home), "init"])
+    (home / "human.token").unlink()
+    cli.main(["--home", str(home), "init"])
+    assert "already initialized" in capsys.readouterr().out
+    assert not (home / "human.token").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_serve_refuses_a_world_readable_state_directory(tmp_path):
+    home = tmp_path / "home"
+    cli.main(["--home", str(home), "init"])
+    home.chmod(0o755)
+    with pytest.raises(SystemExit, match="chmod 700"):
+        cli.main(["--home", str(home), "serve"])
 
 
 def test_agent_verbs_print_json_and_report_api_errors(monkeypatch, capsys):

@@ -33,7 +33,8 @@ Create `spec.json`, replacing the digest with the output of
 bashgym-ar campaign create spec.json         # prints the campaign id
 ```
 
-Give an agent a token (`bashgym-ar token agent`) and point it at
+Give an agent a token (`bashgym-ar token agent`, run with your human token)
+and point it at
 [docs/AGENT_GUIDE.md](../../docs/AGENT_GUIDE.md). It will request `start`;
 approve it with `bashgym-ar approve <approval_id>`. `tests/test_e2e_smoke.py`
 runs this campaign automatically.

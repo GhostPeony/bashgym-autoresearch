@@ -25,11 +25,9 @@ def free_port() -> int:
 
 
 @pytest.fixture
-def server(tmp_path, capsys):
+def server(tmp_path):
     home = tmp_path / "home"
     cli.main(["--home", str(home), "init"])
-    cli.main(["--home", str(home), "token", "agent", "--label", "e2e-agent"])
-    agent_token = capsys.readouterr().out.strip().splitlines()[-1]
     port = free_port()
     process = subprocess.Popen(
         [
@@ -59,7 +57,7 @@ def server(tmp_path, capsys):
         process.kill()
         raise AssertionError("server did not start")
     human = Client(url, (home / "human.token").read_text())
-    agent = Client(url, agent_token)
+    agent = Client(url, human.create_token("agent", "e2e-agent")["token"])
     yield human, agent
     process.terminate()
     process.wait(timeout=30)
@@ -118,7 +116,12 @@ def test_smoke_campaign_end_to_end(server):
 
     baseline = agent.propose(
         campaign_id,
-        {"role": "baseline", "hypothesis": "measure the starting point", "estimated_cost": 1},
+        {
+            "role": "baseline",
+            "hypothesis": "measure the starting point",
+            "estimated_cost": 1,
+            "recipe": {"boost": 0.0},
+        },
     )["experiment_id"]
     assert wait_for_decision(agent, campaign_id, baseline)["decision"] == "baseline"
 

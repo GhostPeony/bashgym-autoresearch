@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     status TEXT NOT NULL,
     version INTEGER NOT NULL,
     spec_json TEXT NOT NULL,
+    profiles_json TEXT NOT NULL DEFAULT '{}',
     guidance TEXT NOT NULL,
     guidance_version INTEGER NOT NULL,
     created_at TEXT NOT NULL,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS stage_runs (
     output_digest TEXT,
     script_sha256 TEXT NOT NULL,
     context_json TEXT,
+    cost REAL NOT NULL DEFAULT 0,
     version INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -92,7 +94,11 @@ CREATE TABLE IF NOT EXISTS events (
     at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_by_campaign ON events(campaign_id, seq);
-CREATE TABLE IF NOT EXISTS idempotency (key TEXT PRIMARY KEY, response_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS idempotency (
+    key TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    response_json TEXT NOT NULL
+);
 """
 
 _VERSIONED_TABLES = frozenset({"campaigns", "experiments", "stage_runs", "approvals"})
@@ -100,6 +106,10 @@ _VERSIONED_TABLES = frozenset({"campaigns", "experiments", "stage_runs", "approv
 
 class ConflictError(RuntimeError):
     """A versioned row changed since it was read."""
+
+
+class IdempotencyMismatch(ConflictError):
+    """An idempotency key was reused for a different request."""
 
 
 def utc_now() -> str:
@@ -192,17 +202,31 @@ class Store:
             for row in rows
         ]
 
-    def remember(self, key: str, compute: Callable[[sqlite3.Connection], dict]) -> dict:
-        """Run ``compute`` once per key inside one transaction and replay its response."""
+    def remember(
+        self,
+        key: str,
+        compute: Callable[[sqlite3.Connection], dict],
+        *,
+        fingerprint: str = "",
+    ) -> dict:
+        """Run ``compute`` once per key inside one transaction and replay its response.
+
+        ``fingerprint`` identifies the request; reusing a key for a different
+        request raises ``IdempotencyMismatch`` instead of replaying.
+        """
         with self.transaction() as db:
             row = db.execute(
-                "SELECT response_json FROM idempotency WHERE key = ?", (key,)
+                "SELECT fingerprint, response_json FROM idempotency WHERE key = ?", (key,)
             ).fetchone()
             if row is not None:
+                if row["fingerprint"] != fingerprint:
+                    raise IdempotencyMismatch(
+                        "idempotency key was already used for another request"
+                    )
                 return json.loads(row["response_json"])
             response = compute(db)
             db.execute(
-                "INSERT INTO idempotency(key, response_json) VALUES (?, ?)",
-                (key, json.dumps(response, sort_keys=True)),
+                "INSERT INTO idempotency(key, fingerprint, response_json) VALUES (?, ?, ?)",
+                (key, fingerprint, json.dumps(response, sort_keys=True)),
             )
             return response

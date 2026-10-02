@@ -33,6 +33,7 @@ class EvalContext(FrozenModel):
     dataset_sha256: Sha256 = Field(pattern=r"^[0-9a-f]{64}$")
     evaluator_sha256: Sha256 = Field(pattern=r"^[0-9a-f]{64}$")
     model_digest: Sha256 | None = None
+    nonce: str | None = Field(default=None, max_length=64)
 
     def digest(self) -> Sha256:
         return canonical_hash(self)

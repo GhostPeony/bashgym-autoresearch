@@ -75,3 +75,26 @@ def test_evidence_provenance_is_bounded_string_map():
     assert EvalEvidence(**base, provenance={"suite": "coding"}).provenance == {"suite": "coding"}
     with pytest.raises(ValidationError):
         EvalEvidence(**base, provenance={str(i): "x" for i in range(33)})
+
+
+def test_deadlines_must_carry_a_timezone():
+    from datetime import datetime
+
+    with pytest.raises(ValidationError):
+        StopRules(max_experiments=1, max_cost=1, deadline=datetime(2030, 1, 1))
+
+
+def test_profile_env_passthrough_names_and_change_size_are_bounded():
+    base = dict(
+        name="p",
+        kind="train",
+        argv=("x",),
+        script="s.py",
+        script_sha256="a" * 64,
+        timeout_seconds=1,
+    )
+    assert StageProfile(**base, env_passthrough=("HF_HOME",)).env_passthrough == ("HF_HOME",)
+    with pytest.raises(ValidationError):
+        StageProfile(**base, env_passthrough=("bad name",))
+    with pytest.raises(ValidationError):
+        Change(variable="x", before=0, after="y" * 5000)

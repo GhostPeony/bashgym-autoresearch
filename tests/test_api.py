@@ -81,12 +81,14 @@ def test_idempotent_propose_replays(world, clients):
 
 def test_full_loop_over_http(world, clients):
     human, agent, _ = clients
-    worker = Worker(world.service, LocalExecutor())
+    worker = Worker(world.service, LocalExecutor(world.home / "control"))
     campaign_id = human.create_campaign(spec_json(world))["campaign_id"]
     human.decide_approval(agent.request_approval(campaign_id, "start")["approval_id"], True)
     assert agent.brief(campaign_id)["next_action"]["kind"] == "propose_baseline"
     agent.propose(
-        campaign_id, {"role": "baseline", "hypothesis": "start", "estimated_cost": 1}, key="b"
+        campaign_id,
+        {"role": "baseline", "hypothesis": "start", "estimated_cost": 1, "recipe": {"boost": 0.0}},
+        key="b",
     )
     settle(worker)
     agent.propose(

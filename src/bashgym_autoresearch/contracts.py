@@ -5,10 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from datetime import datetime
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
 Sha256 = str
 Direction = Literal["maximize", "minimize"]
@@ -25,6 +33,8 @@ Scope = Literal["smoke", "development"]
 
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+_ENV_NAME_PATTERN = r"^[A-Z_][A-Z0-9_]{0,127}$"
+MAX_CHANGE_VALUE_BYTES = 4096
 
 
 def canonical_json(value: Any) -> bytes:
@@ -58,12 +68,19 @@ class ProtectedGate(FrozenModel):
 class StopRules(FrozenModel):
     max_experiments: int = Field(ge=1, le=10_000)
     max_cost: float = Field(ge=0, allow_inf_nan=False)
-    deadline: datetime | None = None
+    deadline: AwareDatetime | None = None
     target: float | None = Field(default=None, allow_inf_nan=False)
+    max_incomplete: int = Field(default=5, ge=1, le=1_000)
 
 
 class StageProfile(FrozenModel):
-    """A registered stage program. ``argv`` may use {script}, {run_dir}, {inputs}, {outputs}."""
+    """A registered stage program.
+
+    ``argv`` may use {python}, {script}, {run_dir}, {inputs}, {outputs}. The
+    platform charges ``cost_per_hour`` of measured wall-clock time against the
+    campaign budget. Only environment variables named in ``env_passthrough``
+    (plus a small fixed allow-list) reach the stage.
+    """
 
     name: str = Field(pattern=_NAME_PATTERN)
     kind: StageKind
@@ -71,6 +88,16 @@ class StageProfile(FrozenModel):
     script: str = Field(min_length=1, max_length=4096)
     script_sha256: Sha256 = Field(pattern=_SHA256_PATTERN)
     timeout_seconds: float = Field(gt=0, le=7 * 24 * 3600, allow_inf_nan=False)
+    cost_per_hour: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    env_passthrough: tuple[str, ...] = Field(default=(), max_length=32)
+
+    @field_validator("env_passthrough")
+    @classmethod
+    def _env_names(cls, names: tuple[str, ...]) -> tuple[str, ...]:
+
+        if any(not re.fullmatch(_ENV_NAME_PATTERN, name) for name in names):
+            raise ValueError("env_passthrough entries must be upper-case variable names")
+        return names
 
 
 class EvaluationBinding(FrozenModel):
@@ -90,6 +117,7 @@ class CampaignSpec(FrozenModel):
     train_profile: str | None = Field(default=None, pattern=_NAME_PATTERN)
     alpha: float = Field(default=0.05, gt=0, lt=0.5)
     n_resamples: int = Field(default=2000, ge=100, le=100_000)
+    min_clusters: int = Field(default=10, ge=1, le=100_000)
 
 
 class Change(FrozenModel):
@@ -101,6 +129,10 @@ class Change(FrozenModel):
     def _differs(self) -> Change:
         if canonical_hash(self.before) == canonical_hash(self.after):
             raise ValueError("a change must alter the variable's value")
+        if max(len(canonical_json(self.before)), len(canonical_json(self.after))) > (
+            MAX_CHANGE_VALUE_BYTES
+        ):
+            raise ValueError("change values are limited to 4 KiB of JSON")
         return self
 
 

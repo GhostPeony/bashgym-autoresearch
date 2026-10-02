@@ -173,3 +173,82 @@ def test_change_rules_by_role():
         validate_change("baseline", change)
     with pytest.raises(ProposalError):
         validate_change("candidate", None)
+
+
+def test_too_few_clusters_is_inconclusive_even_with_a_tight_interval():
+    clustered = EvalEvidence(
+        context_sha256="b" * 64,
+        scope="smoke",
+        metrics={"pass_rate": 0.5},
+        tasks=tuple(TaskOutcome(task_id=f"t{i}", cluster="one", value=i % 2) for i in range(40)),
+        complete=True,
+    )
+    better = clustered.model_copy(
+        update={"tasks": tuple(t.model_copy(update={"value": 1.0}) for t in clustered.tasks)}
+    )
+    comparison = decide(spec(), role="candidate", incumbent=clustered, result=better)
+    assert comparison.decision == "inconclusive" and "clusters" in comparison.reason
+
+
+def test_relabelled_clusters_or_changed_evaluator_cannot_be_compared():
+    relabelled = BASE.model_copy(
+        update={"tasks": tuple(t.model_copy(update={"cluster": "x"}) for t in BASE.tasks)}
+    )
+    with pytest.raises(EvaluationMismatch, match="cluster"):
+        decide(spec(), role="candidate", incumbent=BASE, result=relabelled)
+    changed = BASE.model_copy(update={"provenance": {"harness_sha256": "v2"}})
+    with pytest.raises(EvaluationMismatch, match="harness"):
+        decide(spec(), role="candidate", incumbent=BASE, result=changed)
+
+
+def test_protected_gates_are_also_checked_against_the_baseline():
+    gated = spec(
+        protected=(ProtectedGate(metric="safety", direction="maximize", max_regression=0.05),)
+    )
+    baseline_evidence = evidence([0, 1] * 20, metrics={"pass_rate": 0.5, "safety": 0.90})
+    incumbent = evidence([0, 1] * 20, metrics={"pass_rate": 0.5, "safety": 0.86})
+    candidate = evidence([1] * 40, metrics={"pass_rate": 1.0, "safety": 0.82})
+    without = decide(gated, role="candidate", incumbent=incumbent, result=candidate)
+    with_baseline = decide(
+        gated, role="candidate", incumbent=incumbent, result=candidate, baseline=baseline_evidence
+    )
+    assert without.decision == "keep" and with_baseline.breached_gate == "safety"
+
+
+def test_repeated_incomplete_experiments_stop_the_campaign():
+    assert _next(incomplete_count=5) == "stop"
+
+
+def test_single_change_check_allows_exactly_the_declared_variable():
+    from bashgym_autoresearch.decision import check_single_change
+
+    parent = {"lr": 1e-4, "optimizer": {"name": "adamw", "beta": 0.9}, "epochs": 1}
+    check_single_change(
+        parent, {**parent, "lr": 2e-4}, Change(variable="lr", before=1e-4, after=2e-4)
+    )
+    nested = {**parent, "optimizer": {"name": "adamw", "beta": 0.95}}
+    check_single_change(parent, nested, Change(variable="optimizer.beta", before=0.9, after=0.95))
+    added = {**parent, "warmup": 10}
+    check_single_change(parent, added, Change(variable="warmup", before=None, after=10))
+    with pytest.raises(ProposalError, match="epochs"):
+        check_single_change(
+            parent,
+            {**parent, "lr": 2e-4, "epochs": 3},
+            Change(variable="lr", before=1e-4, after=2e-4),
+        )
+    with pytest.raises(ProposalError, match="not"):
+        check_single_change(
+            parent, {**parent, "lr": 3e-4}, Change(variable="lr", before=1e-4, after=2e-4)
+        )
+    with pytest.raises(ProposalError, match="does not change"):
+        check_single_change(parent, parent, Change(variable="lr", before=1e-4, after=2e-4))
+
+
+def test_single_change_from_an_empty_baseline_recipe():
+    from bashgym_autoresearch.decision import check_single_change
+
+    check_single_change({}, {"boost": 0.3}, Change(variable="boost", before=None, after=0.3))
+    with pytest.raises(ProposalError):
+        check_single_change(
+            {}, {"boost": 0.3, "lr": 1}, Change(variable="boost", before=None, after=0.3)
+        )

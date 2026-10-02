@@ -81,6 +81,9 @@ class Client:
         return self._call("GET", f"/campaigns/{campaign_id}/report")
 
     # human operations
+    def create_token(self, role: str, label: str) -> dict:
+        return self._call("POST", "/tokens", json={"role": role, "label": label})
+
     def register_profile(self, profile: dict) -> dict:
         return self._call("POST", "/profiles", json=profile)
 

@@ -51,8 +51,8 @@ def _describe(outputs_dir: Path) -> tuple[SealedFile, ...]:
         raise SealError("outputs directory is missing")
     files = []
     for path in sorted(outputs_dir.rglob("*")):
-        if path.is_symlink():
-            raise SealError(f"symbolic link in outputs: {path.name}")
+        if path.is_symlink() or os.path.isjunction(path):
+            raise SealError(f"link in outputs: {path.name}")
         if path.is_file():
             digest, size = hash_file(path)
             files.append(
