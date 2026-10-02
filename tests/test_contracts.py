@@ -68,3 +68,10 @@ def test_change_requires_a_real_difference_and_profile_argv_is_bounded():
             script_sha256="a" * 64,
             timeout_seconds=10,
         )
+
+
+def test_evidence_provenance_is_bounded_string_map():
+    base = dict(context_sha256="a" * 64, scope="smoke", metrics={"m": 1.0}, tasks=(), complete=True)
+    assert EvalEvidence(**base, provenance={"suite": "coding"}).provenance == {"suite": "coding"}
+    with pytest.raises(ValidationError):
+        EvalEvidence(**base, provenance={str(i): "x" for i in range(33)})

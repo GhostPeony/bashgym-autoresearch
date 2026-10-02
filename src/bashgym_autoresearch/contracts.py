@@ -118,6 +118,7 @@ class EvalEvidence(FrozenModel):
     metrics: dict[str, float] = Field(min_length=1, max_length=256)
     tasks: tuple[TaskOutcome, ...] = Field(max_length=100_000)
     complete: bool
+    provenance: dict[str, str] = Field(default_factory=dict, max_length=32)
 
     @field_validator("metrics")
     @classmethod
