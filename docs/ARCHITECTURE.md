@@ -63,8 +63,8 @@ The same operations are exposed through MCP, the CLI, and HTTP:
 | `stats` **(implemented)** | Clustered paired bootstrap |
 | `seal`, `evidence` **(implemented)** | Result sealing and evaluation verification |
 | `worker` **(implemented)** | Mechanical progression: launch, observe, seal, decide, stop rules |
-| `executors` | Local **(implemented)** and SSH execution with restart-safe run identity and deadlines |
-| `runners` | Generic evaluation harness with coding and data-analysis suites **(implemented)**; TRL and NeMo AutoModel training |
+| `executors` | Local execution with restart-safe run identity and deadlines **(implemented)**; remote compute is handled by running the service on the GPU host ([DEPLOYMENT.md](DEPLOYMENT.md)); HF Jobs for multi-GPU runs is planned |
+| `runners` | Generic evaluation harness with coding and data-analysis suites, and TRL LoRA SFT training **(implemented, GPU run pending)**; NeMo AutoModel training planned |
 | `auth`, `service` **(implemented)**; `notify` | Human gates and guidance (implemented); check-in digests (planned) |
 | `traces` | Agent-session import, redaction, quality classification, training export |
 | `api`, `mcp_server`, `cli` **(implemented)** | The agent and human surfaces |
@@ -76,8 +76,8 @@ The same operations are exposed through MCP, the CLI, and HTTP:
    and the agent operations, proven end to end with a labeled smoke stage.
 2. **Evaluation harness (done):** one task-suite interface, with a coding suite and a
    data-analysis suite (SmolDataEnvs).
-3. **Training and remote execution:** TRL and NeMo AutoModel runners, SSH
-   executor.
+3. **Training (in progress):** TRL LoRA SFT runner and GPU-host deployment;
+   NeMo AutoModel and HF Jobs later.
 4. **Traces:** import, redaction, classification, and training export.
 5. **Dashboards:** a web interface for campaign, training, evaluation, agent,
    and approval state.

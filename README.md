@@ -89,7 +89,14 @@ Milestone 2 adds the evaluation harness ([docs/EVALUATION.md](docs/EVALUATION.md
 deployment must provide (notably, run the service as a different OS user than
 the agent).
 
-Not yet available: training runners, remote (SSH) execution, trace capture,
+Milestone 3 adds a TRL LoRA SFT training stage (`runners/train_trl.py`): the
+human-owned config pins the base model and the datasets the agent may choose,
+the agent's recipe is validated against hard caps, and the adapter is merged
+into a full checkpoint for evaluation. Its configuration, recipe, and dataset
+handling are tested; it has not yet run on a GPU. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+describes running the service on the GPU host.
+
+Not yet available: a GPU-validated training run, trace capture,
 notifications, and the web dashboards.
 
 ## Development
