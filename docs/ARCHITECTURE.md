@@ -64,7 +64,7 @@ The same operations are exposed through MCP, the CLI, and HTTP:
 | `seal`, `evidence` **(implemented)** | Result sealing and evaluation verification |
 | `worker` **(implemented)** | Mechanical progression: launch, observe, seal, decide, stop rules |
 | `executors` | Local **(implemented)** and SSH execution with restart-safe run identity and deadlines |
-| `runners` | Generic verifiable-task evaluation harness; TRL and NeMo AutoModel training |
+| `runners` | Generic evaluation harness with coding and data-analysis suites **(implemented)**; TRL and NeMo AutoModel training |
 | `auth`, `service` **(implemented)**; `notify` | Human gates and guidance (implemented); check-in digests (planned) |
 | `traces` | Agent-session import, redaction, quality classification, training export |
 | `api`, `mcp_server`, `cli` **(implemented)** | The agent and human surfaces |
@@ -74,7 +74,7 @@ The same operations are exposed through MCP, the CLI, and HTTP:
 
 1. **Core loop (done):** contracts, store, decision, statistics, sealing, approvals,
    and the agent operations, proven end to end with a labeled smoke stage.
-2. **Evaluation harness:** one task-suite interface, with a coding suite and a
+2. **Evaluation harness (done):** one task-suite interface, with a coding suite and a
    data-analysis suite (SmolDataEnvs).
 3. **Training and remote execution:** TRL and NeMo AutoModel runners, SSH
    executor.

@@ -22,6 +22,12 @@ dependencies = [
 [project.scripts]
 bashgym-ar = "bashgym_autoresearch.cli:main"
 
+[project.optional-dependencies]
+eval = [
+    "math-verify>=0.9.0",
+    "transformers>=5.18.0",
+]
+
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
 build-backend = "uv_build"

@@ -1,0 +1,24 @@
+# Data-analysis packages matching the FineEnvs SmolDataEnvs reference sandbox
+# (docker.io/savatar101/env-data-agent-train@sha256:7b3f7e22780b431ce0d43717dcef6875cde84baeee824cc87e968374d62d3470),
+# limited to what model programs import; agent and HTTP tooling is omitted.
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.63.0
+joblib==1.5.3
+kiwisolver==1.5.0
+matplotlib==3.11.0
+narwhals==2.22.1
+numpy==2.4.6
+packaging==26.2
+pandas==3.0.3
+patsy==1.0.2
+pillow==12.2.0
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+scikit-learn==1.9.0
+scipy==1.17.1
+seaborn==0.13.2
+six==1.17.0
+statsmodels==0.14.6
+tabulate==0.10.0
+threadpoolctl==3.6.0

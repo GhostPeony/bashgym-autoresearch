@@ -1,8 +1,9 @@
 # bashgym-autoresearch
 
-**Status: early, built in public.** Milestone 1, the GPU-free core loop, works
-end to end; see [What works today](#what-works-today). Training, the real
-evaluation suites, trace capture, and the dashboards are still being built.
+**Status: early, built in public.** The core loop (milestone 1) and the
+evaluation harness (milestone 2) work and are tested; see
+[What works today](#what-works-today). Training runners, remote execution,
+trace capture, and the dashboards are still being built.
 
 bashgym-autoresearch lets an AI agent improve a model through repeated,
 controlled experiments while a human checks in and approves the results:
@@ -73,12 +74,23 @@ Milestone 1 provides the loop itself, proven with smoke stages that need no GPU
 - The budget is charged by measured stage time at human-set rates.
 - Smoke-scope results are labelled throughout and cannot be promoted.
 
+Milestone 2 adds the evaluation harness ([docs/EVALUATION.md](docs/EVALUATION.md)):
+
+- One harness runs any suite as an evaluation stage, with greedy local
+  generation and fail-closed Docker grading. Two suites are included:
+  HumanEval-style coding and SmolDataEnvs data analysis.
+- The data-analysis suite grades on the host so gold answers never enter the
+  sandbox, and mounts task data read-only after checking every file's SHA-256.
+- `sandbox-images/python-analysis` builds the offline sandbox image. Reference
+  canaries (gold programs pass, wrong programs fail, data cannot be modified)
+  run through the real harness and Docker; no model has been scored yet.
+
 [docs/SECURITY.md](docs/SECURITY.md) lists what the service enforces and what
 deployment must provide (notably, run the service as a different OS user than
 the agent).
 
-Not yet available: real training and evaluation runners, remote (SSH)
-execution, trace capture, notifications, and the web dashboards.
+Not yet available: training runners, remote (SSH) execution, trace capture,
+notifications, and the web dashboards.
 
 ## Development
 
