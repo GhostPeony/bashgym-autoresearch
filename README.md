@@ -96,8 +96,16 @@ into a full checkpoint for evaluation. Its configuration, recipe, and dataset
 handling are tested; it has not yet run on a GPU. [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 describes running the service on the GPU host.
 
-Not yet available: a GPU-validated training run, trace capture,
-notifications, and the web dashboards.
+Milestone 5 adds the web dashboard (`web/`, served by `bashgym-ar serve` once
+built with `npm run build`). It shows each campaign's objective and next
+action, a forest plot of every experiment's improvement interval against the
+minimum improvement, training loss, guidance you can edit, recent activity,
+the experiment ledger, and a decision inbox for pending approvals. It updates
+live from the event stream. `examples/smoke/demo.py` runs a demo campaign so
+the dashboard has data to show.
+
+Not yet available: a GPU-validated training run, trace capture, and check-in
+notifications.
 
 ## Development
 
@@ -106,6 +114,7 @@ uv sync
 uv run pytest
 uv run ruff check .
 uv run black --check .
+cd web && npm ci && npm run typecheck && npm test && npm run build
 ```
 
 ## License

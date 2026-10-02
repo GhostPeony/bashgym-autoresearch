@@ -80,6 +80,15 @@ def cmd_token(args: argparse.Namespace) -> int:
     return 0
 
 
+def web_directory() -> Path | None:
+    """The built dashboard: $BGAR_WEB_DIR, or web/dist in a source checkout."""
+    configured = os.environ.get("BGAR_WEB_DIR")
+    candidate = (
+        Path(configured) if configured else Path(__file__).resolve().parents[2] / "web" / "dist"
+    )
+    return candidate if (candidate / "index.html").is_file() else None
+
+
 def check_home_permissions(home: Path) -> str | None:
     """On POSIX the state directory must not be readable by other users."""
     if os.name == "nt":
@@ -110,7 +119,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     )
     worker.start()
     try:
-        uvicorn.run(create_app(service), host=args.host, port=args.port, log_level="info")
+        app = create_app(service, static_dir=web_directory())
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     finally:
         stop.set()
         worker.join(timeout=10)
